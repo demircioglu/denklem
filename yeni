@@ -1,0 +1,173 @@
+package gok;
+
+import java.io.File;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.ArrayList;
+
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
+
+public class XML_Par_Read {
+       static Connection baglanti = null;
+    static PreparedStatement statement;
+    static ResultSet sonuc;
+    static int id;
+
+        public static Connection getMySQLConnection() throws Exception {
+        String driver = "com.mysql.jdbc.Driver";
+        String url = "jdbc:mysql://localhost/network";
+        String username = "root";
+        String password = "123";
+        Class.forName(driver);
+        return DriverManager.getConnection(url, username, password);
+    }
+
+    public static boolean storeXMLData(ArrayList<String> listemiz) {
+
+        try {
+            baglanti = getMySQLConnection();
+            statement = baglanti.prepareStatement("select mac from hostlar where mac='" + listemiz.get(1) + "'");
+            sonuc = statement.executeQuery();
+            if (sonuc.next() == false) {
+                statement.executeUpdate("insert into hostlar(os,mac,host_zaman) values('" + listemiz.get(0) + "', '" + listemiz.get(1) + "',now())");
+             }
+
+            statement = baglanti.prepareStatement("select id from hostlar where mac='" + listemiz.get(1) + "'");
+            sonuc = statement.executeQuery();
+            if (sonuc.next()) {
+                id = sonuc.getInt("id");
+                System.out.println("Id degerini test ediyoruz: " + id);
+            }
+
+            statement = baglanti.prepareStatement("select ip_no from ipler where ip_no='" + listemiz.get(2) + "'");
+            sonuc = statement.executeQuery();
+            if (sonuc.next() == false) {
+                statement.executeUpdate("insert into ipler(ip_no,host_id,ip_zaman) values('" + listemiz.get(2) + "','" + id + "',now())");
+            }
+
+            statement = baglanti.prepareStatement("select port_no from portlar where host_id='" + id + "'");
+            sonuc = statement.executeQuery();
+            int port = 0;
+
+            for (int i = 3; i < listemiz.size(); i++) {
+                statement = baglanti.prepareStatement("select id from portlar where port_no='" + listemiz.get(i) + "' and host_id='" + id + "'");
+                sonuc = statement.executeQuery();
+                if (sonuc.next() == false) {
+                    statement.executeUpdate("insert into portlar(port_no,host_id,port_zaman) values('" + listemiz.get(i) + "','" + id + "',now())");
+                }
+
+            }
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            try {
+                sonuc.close();
+                statement.close();
+                baglanti.close();
+                return true;
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
+        }
+        return false;
+
+    }
+
+    private static ArrayList<String> list;
+
+    public static void XMLReaderBeg() {
+        try {
+//.xml dosyasinin bulundugu url
+            File file = new File("/home/ubuntu/crontab.xml");
+//xml parse etmek icin javax.xml ve org.w3c paketlerindeki obje ve metod tanimladim
+//onemli olan xml etiketleri arasindaki degerleri agac yapisi seklinde dusunmemiz lazim.
+//jdom ve dom4j gibi xml parser kutuphaneleri de var.
+            DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
+            DocumentBuilder db = dbf.newDocumentBuilder();
+            Document doc = db.parse(file);
+            doc.getDocumentElement().normalize();
+//agacin root nodunu yazdiriyorum.Ornekte xml dosyasina bakarsaniz "nmaprun" oldugunu gorursunuz
+            System.out.println("Root Element: " + doc.getDocumentElement().getNodeName());
+//sonra host nodu ve bu hots etiketlerinin childlarini bir NodeList e atiyor
+            NodeList nodeLst = doc.getElementsByTagName("host");
+//crontab dosyasindaki komuta bakarsaniz 0/24 yani 256 tane host taranmis
+            System.out.println("Host sayisi: " + nodeLst.getLength());
+//Node listemizdeki itemlara erisiyoruz
+            for (int s = 0; s < nodeLst.getLength(); s++) {
+
+                Node fstNode = nodeLst.item(s);
+                if (fstNode.getNodeType() == Node.ELEMENT_NODE) {
+//Bu parse ettigimiz xml i belli sirada arraylistte depoluyoruz ve oradan veritabanina
+                    list = new ArrayList<String>();
+                    Element fstElmnt = (Element) fstNode;
+//statusa ait childlari aliyoruz
+                    NodeList fstNmElmntLst = fstElmnt.getElementsByTagName("status");
+                    Element fstNmElmnt = (Element) fstNmElmntLst.item(0);
+//state durumu up yani hosta ait pc varsa o pc lere ait operating system, ip, mac adresleri ve
+//closed olmayan portlarini aliyoruz. Open ve filtered olanlari yani
+                    if (fstNmElmnt.getAttribute("state").equals("up")) {
+//os nodunun da childlarindan nameleri yani linux veya windows..
+                        NodeList osList = fstElmnt.getElementsByTagName("os");
+                        for (int temp = 0; temp < osList.getLength(); temp++) {
+
+                            Node osNode = osList.item(0);
+                            if (osNode.getNodeType() == Node.ELEMENT_NODE) {
+//<os> <osmatch name="Linux 2.6.9 - 2.6.19" </os> name i aliyoruz
+                                Element eElement = (Element) osNode;
+                                NodeList osLis = eElement.getElementsByTagName("osmatch");
+                                Element osName = (Element) osLis.item(temp);
+                                list.add(0, osName.getAttribute("name"));
+
+                            }
+                        }
+//<address addr="192.168.2.1" />
+//<address addr="00:1C:A8:8D:08:17"/> mac adresi ve ip adreslerini aliyoruz
+                        NodeList adress = fstElmnt.getElementsByTagName("address");
+                        Element macAdresi = (Element) adress.item(1);
+                        list.add(1, macAdresi.getAttribute("addr"));
+                        Element ipAdresi = (Element) adress.item(0);
+                        list.add(2, ipAdresi.getAttribute("addr"));
+
+//Ports
+
+                        NodeList ports = fstElmnt.getElementsByTagName("port");
+                        for (int p = 0; p < ports.getLength(); p++) {
+
+                            Node portsNode = nodeLst.item(p);
+                            if (portsNode.getNodeType() == Node.ELEMENT_NODE) {
+                                Element portNum = (Element) ports.item(p);
+//portlarda durumu closed olmayanlari aldim
+                                if (!portNum.getAttribute("state").equals("closed")) {
+                                    list.add(portNum.getAttribute("portid"));
+                                }
+                            }
+                        }
+//Belli sirada arraylistte bulunan datalari veritabani tablolarina kaydediyor
+                        storeXMLData(list);
+
+                        System.out.println("---------------------------------");
+                    }
+                }
+
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+    }
+
+   public static void main(String args[])
+   {
+        XMLReaderBeg();
+   }
+
+}
