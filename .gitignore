@@ -1,0 +1,46 @@
+<%@page contentType="text/html" pageEncoding="UTF-8"%>
+<%@page import="gok.Kisi,gok.KisiJpaController,java.util.List, java.util.ArrayList" %>
+
+<html>
+    <head>
+        <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+        <title>JSP Page</title>
+    </head>
+    <body>
+        <%!            String hangiIslem;
+            Kisi kisi;
+            KisiJpaController kisi_control;
+            List<Kisi> list;
+        %>
+        <%
+                    list = new ArrayList<Kisi>();
+                    hangiIslem = request.getParameter("secilen");
+                    kisi_control = new KisiJpaController();
+
+        %>
+        <%
+                    if (hangiIslem.equals("1")) {
+                        kisi = new Kisi("Isil", "CANAKKALE", 25);
+                        kisi_control.create(kisi);
+                        out.println("Bir kisi veritabanina eklendi");
+                    } else if (hangiIslem.equals("2")) {
+                        kisi_control.destroy(2);
+                        out.println("id=2 olan kayit silindi");
+                    } else if (hangiIslem.equals("3")) {
+//findKisiEntities(maxResults, firstResult) --> kac kayit olsun, hangi kayittan baslasin
+                        list = kisi_control.findKisiEntities(kisi_control.getKisiCount(), 0);
+                        out.println("<table border='1'><tr><th>ID</th><th>Ad</th><th>Soyad</th><th>Yas</th></tr>");
+                        for (Kisi i : list) {
+                            out.println("<tr><td>" + i.getId() + "</td><td>" + i.getAd() + "</td><td>" + i.getSoyad() + "</td><td>" + i.getYas() + "</td></tr>");
+                        }
+                        out.println("</table>");
+                    } else if (hangiIslem.equals("4")) {
+                        out.println("Toplam kayit sayisi: " + kisi_control.getKisiCount());
+                    } else {
+                        out.println("Herhangi bir ıslem secilmedi");
+                        return;
+                    }
+
+        %>
+    </body>
+</html>
